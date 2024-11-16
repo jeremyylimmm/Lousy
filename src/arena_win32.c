@@ -55,8 +55,6 @@ void* arena_push(Arena* arena, size_t amount) {
       exit(1);
     }
 
-    printf("Committing a page.\n");
-
     VirtualAlloc(arena->next_page, arena->page_size, MEM_COMMIT, PAGE_READWRITE);
 
     arena->next_page = ptr_byte_add(arena->next_page, arena->page_size);

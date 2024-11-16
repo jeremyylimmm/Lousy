@@ -12,3 +12,5 @@ void* arena_push(Arena* arena, size_t amount);
 inline void* ptr_byte_add(void* ptr, int64_t offset) {
   return (uint8_t*)ptr + offset;
 }
+
+char* load_text_file(Arena* arena, const char* path);

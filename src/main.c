@@ -5,16 +5,14 @@
 int main() {
   Arena* arena = new_arena();
 
-  int n = 1000;
-  int** arr = arena_push(arena, n * sizeof(int*));
+  const char* path = "test/test.c";
+  char* contents = load_text_file(arena, path);
 
-  for (int i = 0; i < n; ++i) {
-    arr[i] = arena_push(arena, sizeof(int));
-    *arr[i] = i;
+  if (contents) {
+    printf("%s\n", contents);
   }
-
-  for (int i = 0; i < n; ++i) {
-    printf("%d\n", *arr[i]);
+  else {
+    printf("Failed to load '%s'\n", path);
   }
 
   return 0;
