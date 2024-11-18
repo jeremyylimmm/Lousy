@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <threads.h>
 
 #include "utility.h"
 
@@ -21,7 +22,7 @@ struct ScratchImpl {
   size_t save;
 };
 
-static Arena* scratch_arenas[2]; // TODO: make thread local
+static thread_local Arena* scratch_arenas[2];
 
 Arena* new_arena() {
   Arena* arena = LocalAlloc(LMEM_ZEROINIT, sizeof(Arena));
