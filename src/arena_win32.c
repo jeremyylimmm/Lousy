@@ -66,3 +66,9 @@ void* arena_push(Arena* arena, size_t amount) {
 
   return ptr;
 }
+
+void* arena_zeroed(Arena* arena, size_t amount) {
+  void* ptr = arena_push(arena, amount);
+  memset(ptr, 0, amount);
+  return ptr;
+}
