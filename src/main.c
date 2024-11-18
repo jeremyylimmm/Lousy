@@ -1,20 +1,25 @@
 #include <stdio.h>
 
 #include "utility.h"
-#include "token.h"
+#include "front/front.h"
 
 int main() {
+  init_thread();
+
   Arena* arena = new_arena();
 
-  const char* path = "test/test.c";
+  const char* path = "test/test.txt";
   char* source = load_text_file(arena, path);
 
   Tokens tokens = lex_source(arena, source);
 
-  for (int i = 0; i < tokens.count; ++i) {
-    Token tok = tokens.data[i];
-    printf("%d (line %d): '%.*s'\n", tok.kind, tok.line, tok.length, tok.start);
+  ParseTree* tree = parse(arena, tokens);
+
+  if (!tree) {
+    return 1;
   }
+
+  print_parse_tree(tree);
 
   return 0;
 }

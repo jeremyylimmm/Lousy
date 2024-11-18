@@ -17,6 +17,12 @@ struct Arena {
   void* page_end;
 };
 
+struct ScratchImpl {
+  size_t save;
+};
+
+static Arena* scratch_arenas[2]; // TODO: make thread local
+
 Arena* new_arena() {
   Arena* arena = LocalAlloc(LMEM_ZEROINIT, sizeof(Arena));
 
@@ -71,4 +77,61 @@ void* arena_zeroed(Arena* arena, size_t amount) {
   void* ptr = arena_push(arena, amount);
   memset(ptr, 0, amount);
   return ptr;
+}
+
+void init_scratch_arenas() {
+  for (int i = 0; i < ARRAY_LENGTH(scratch_arenas); ++i) {
+    scratch_arenas[i] = new_arena();
+  }
+}
+
+void free_scratch_arenas() {
+  for (int i = 0; i < ARRAY_LENGTH(scratch_arenas); ++i) {
+    free_arena(scratch_arenas[i]);
+  }
+}
+
+Scratch scratch_get(int num_conflicts, Arena** conflicts) {
+  for (int i = 0; i < ARRAY_LENGTH(scratch_arenas); ++i) {
+    Arena* arena = scratch_arenas[i];
+    assert(arena && "scratch arenas not initialized");
+
+    bool no_conflicts = true;
+
+    for (int j = 0; j < num_conflicts; ++j) {
+      if (arena == conflicts[j]) {
+        no_conflicts = false;
+        break;
+      }
+    }
+
+    if (no_conflicts) {
+      size_t save = arena->allocated;
+
+      ScratchImpl* impl = arena_type(arena, ScratchImpl);
+      impl->save = save;
+
+      return (Scratch) {
+        .arena = arena,
+        .impl = impl
+      };
+    }
+  }
+
+  assert(false && "unable to find non-conflicting scratch arena");
+  return (Scratch) {0};
+}
+
+void scratch_release(Scratch* scratch) {
+  size_t save = scratch->impl->save;
+  Arena* arena = scratch->arena;
+
+  assert(save <= arena->allocated);
+
+#if _DEBUG
+  memset(ptr_byte_add(arena->base, save), 0, arena->allocated - save);
+  memset(scratch, 0, sizeof(*scratch));
+#endif
+
+  arena->allocated = save;
 }

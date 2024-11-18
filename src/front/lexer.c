@@ -1,32 +1,27 @@
-#include <stdlib.h>
 #include <ctype.h>
 
-#include "token.h"
+#include "front.h"
 
-typedef struct {
-  int capacity;
-  int length;
-  Token* data;
-} TokenVec;
-
-static void push_token(TokenVec* vec, Token tok) {
-  if (vec->length == vec->length) {
-    vec->capacity = vec->capacity ? vec->capacity * 2 : 8;
-    vec->data = realloc(vec->data, vec->capacity * sizeof(vec->data[0]));
-  }
-
-  vec->data[vec->length++] = tok;
+static Token make_token(int kind, int length, char* start, int line) {
+  return (Token) {
+    .kind = kind,
+    .length = length,
+    .start = start,
+    .line = line
+  };
 }
 
-static Tokens bake_tokens(Arena* arena, TokenVec* vec) {
-  size_t sz = vec->length * sizeof(Token);
+static Tokens bake_tokens(Arena* arena, Vec(Token)* vec) {
+  int count = vec_len(*vec);
+  size_t sz = count * sizeof(Token);
+  
   Token* data = arena_push(arena, sz);
 
-  memcpy(data, vec->data, sz);
-  free(vec->data);
+  memcpy(data, *vec, sz);
+  vec_free(*vec);
 
   return (Tokens) {
-    .count = vec->length,
+    .count = count,
     .data = data
   };
 }
@@ -36,7 +31,7 @@ static bool is_ident(int c) {
 }
 
 Tokens lex_source(Arena* arena, char* source) {
-  TokenVec vec = {0};
+  Vec(Token) vec = NULL;
 
   int line = 1;
   char* cursor = source;
@@ -108,20 +103,20 @@ Tokens lex_source(Arena* arena, char* source) {
         break;
     }
 
-    push_token(&vec, (Token) {
-      .kind = kind,
-      .length = (int)(cursor - start),
-      .start = start,
-      .line = start_line
-    });
+    vec_put(vec, make_token(
+      kind,
+      (int)(cursor - start),
+      start,
+      start_line
+    ));
   }
 
-  push_token(&vec, (Token) {
-    .kind = TOKEN_EOF,
-    .length = 0,
-    .start = cursor,
-    .line = line
-  });
+  vec_put(vec, make_token(
+    TOKEN_EOF,
+    0,
+    cursor,
+    line
+  ));
 
   return bake_tokens(arena, &vec);
 }
