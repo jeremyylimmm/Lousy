@@ -8,7 +8,12 @@ typedef enum {
   STATE_BINARY,
   STATE_BINARY_INFIX,
 
+  STATE_SEMICOLON,
+
   STATE_EXPR,
+
+  STATE_BLOCK,
+  STATE_BLOCK_STMT,
 
   STATE_COMPLETE
 } StateKind;
@@ -22,15 +27,21 @@ typedef struct {
       Token token;
       int num_children;
     } complete;
+    struct {
+      int count;
+      Token lbrace;
+    } block_stmt;
   } as;
 } State;
 
 typedef struct {
+  const char* path;
+  const char* source;
+
   int cur_token;
   Tokens tokens;
 
-  ParseNode* nodes;
-  int num_nodes;
+  Vec(ParseNode) nodes;
 
   Vec(State) stack;
 } Parser;
@@ -53,22 +64,24 @@ void parse_children_next(ParseChildIterator* it) {
 
 static void make_node(Parser* p, ParseNodeKind kind, Token token, int num_children, void* data) {
   assert(kind);
-  assert(p->num_nodes < p->tokens.count && "nodes exhausted - parser bug");
 
-  ParseNode* n = p->nodes + (p->num_nodes++);
+  ParseNode n = {
+    .kind = kind,
+    .token = token,
+    .num_children = num_children,
+    .subtree_size = 1,
+    .data = data,
+  };
 
-  n->kind = kind;
-  n->token = token;
-  n->num_children = num_children;
-  n->subtree_size = 1;
-  n->data = data;
-
-  ParseNode* child = n-1;
+  int child = vec_len(p->nodes)-1;
 
   for (int i = 0; i < num_children; ++i) {
-    n->subtree_size += child->subtree_size;
-    child -= child->subtree_size;
+    int sts = p->nodes[child].subtree_size;
+    n.subtree_size += sts;
+    child -= sts;
   }
+
+  vec_put(p->nodes, n);
 }
 
 static void push_state(Parser* p, State state) {
@@ -109,6 +122,20 @@ static State state_binary_infix(int prec) {
   };
 }
 
+static State state_block() {
+  return (State) {
+    .kind = STATE_BLOCK
+  };
+}
+
+static State state_block_stmt(Token lbrace, int num_stmts) {
+  return (State) {
+    .kind = STATE_BLOCK_STMT,
+    .as.block_stmt.lbrace = lbrace,
+    .as.block_stmt.count = num_stmts,
+  };
+}
+
 static State state_complete(ParseNodeKind kind, Token token, int num_children) {
   return (State) {
     .kind = STATE_COMPLETE,
@@ -121,6 +148,12 @@ static State state_complete(ParseNodeKind kind, Token token, int num_children) {
 static State state_expr() {
   return (State) {
     .kind = STATE_EXPR
+  };
+}
+
+static State state_semicolon() {
+  return (State) {
+    .kind = STATE_SEMICOLON
   };
 }
 
@@ -163,6 +196,25 @@ static ParseNodeKind binary_kind(Token op) {
   }
 }
 
+static bool match(Parser* p, int kind, const char* message) {
+  Token token = peek(p);
+
+  if (token.kind == kind) {
+    lex(p);
+    return true;
+  }
+
+  error_token(p->path, p->source, token, message);
+  return false;
+}
+
+#define REQUIRE(p, kind, msg) \
+  do { \
+    if (!match(p, kind, msg)) {\
+      return false; \
+    } \
+  } while (false)
+
 static bool handle_state(Parser* p, State state) {
   switch (state.kind) {
     default:
@@ -172,16 +224,15 @@ static bool handle_state(Parser* p, State state) {
     case STATE_PRIMARY: {
       switch (peek(p).kind) {
         default:
-          assert(false && "expected an expression");
+          error_token(p->path, p->source, peek(p), "expected an expression");
           return false;
         case TOKEN_INTEGER: {
           Token tok = lex(p);
           uint64_t value = parse_integer(tok);
           make_node(p, PARSE_NODE_INTEGER, tok, 0, (void*)value);
-        } break;
+          return true;
+        }
       }
-
-      return true;
     }
 
     case STATE_BINARY: {
@@ -205,20 +256,61 @@ static bool handle_state(Parser* p, State state) {
       return true;
     }
 
+    case STATE_SEMICOLON: {
+      REQUIRE(p, ';', "ill-formed expression, consider adding a ';' here"); 
+      return true;
+    }
+
     case STATE_EXPR: {
       push_state(p, state_binary(0));
+      return true;
+    }
+
+    case STATE_BLOCK: {
+      Token lbrace = peek(p);
+      REQUIRE(p, '{', "expected a block '{'");
+      push_state(p, state_block_stmt(lbrace, 0));
+      return true;
+    }
+
+    case STATE_BLOCK_STMT: {
+      if (peek(p).kind == '}') {
+        lex(p);
+        make_node(p, PARSE_NODE_BLOCK, state.as.block_stmt.lbrace, state.as.block_stmt.count, NULL);
+        return true;
+      }
+
+      if (peek(p).kind == TOKEN_EOF) {
+        error_token(p->path, p->source, state.as.block_stmt.lbrace, "no matching '}' to close this block");
+        return false;
+      }
+
+      push_state(p, state_block_stmt(state.as.block_stmt.lbrace, state.as.block_stmt.count+1));
+
+      switch (peek(p).kind) {
+        default:
+          push_state(p, state_semicolon());
+          push_state(p, state_expr());
+          break;
+
+        case '{':
+          push_state(p, state_block());
+          break;
+      }
+
       return true;
     }
   }
 }
 
-ParseTree* parse(Arena* arena, Tokens tokens) {
+ParseTree* parse(Arena* arena, Tokens tokens, const char* path, const char* source) {
   Parser p = {
+    .path = path,
+    .source = source,
     .tokens = tokens,
-    .nodes = arena_array(arena, ParseNode, tokens.count),
   };
 
-  push_state(&p, state_expr());
+  push_state(&p, state_block());
 
   ParseTree* tree = NULL;
 
@@ -230,8 +322,8 @@ ParseTree* parse(Arena* arena, Tokens tokens) {
   }
 
   tree = arena_type(arena, ParseTree);
-  tree->nodes = p.nodes;
-  tree->num_nodes = p.num_nodes;
+  tree->num_nodes = vec_len(p.nodes);
+  tree->nodes = vec_bake(arena, p.nodes);
 
   end:
   vec_free(p.stack);

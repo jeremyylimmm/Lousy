@@ -59,3 +59,14 @@ int _vec_pop(void* vec) {
   assert(h->length);
   return --h->length;
 }
+
+void* _vec_bake(Arena* arena, void* vec, size_t stride) {
+  size_t sz = vec_len(vec) * stride;
+  void* data = arena_push(arena, sz);
+
+  memcpy(data, vec, sz);
+
+  vec_free(vec);
+
+  return data;
+}

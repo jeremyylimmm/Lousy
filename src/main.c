@@ -13,7 +13,7 @@ int main() {
 
   Tokens tokens = lex_source(arena, source);
 
-  ParseTree* tree = parse(arena, tokens);
+  ParseTree* tree = parse(arena, tokens, path, source);
 
   if (!tree) {
     return 1;

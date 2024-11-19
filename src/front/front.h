@@ -56,7 +56,7 @@ typedef struct {
 
 Tokens lex_source(Arena* arena, char* source);
 
-ParseTree* parse(Arena* arena, Tokens tokens);
+ParseTree* parse(Arena* arena, Tokens tokens, const char* path, const char* source);
 
 void print_parse_tree(ParseTree* tree);
 
@@ -65,3 +65,5 @@ bool parse_children_continue(ParseChildIterator* it);
 void parse_children_next(ParseChildIterator* it);
 
 #define parse_node_for_each_child(node, it) for (ParseChildIterator it = parse_children_begin(node); parse_children_continue(&it); parse_children_next(&it))
+
+void error_token(const char* path, const char* source, Token token, const char* fmt, ...);
