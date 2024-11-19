@@ -17,6 +17,9 @@ typedef enum {
 
   STATE_LOCAL,
 
+  STATE_IF,
+  STATE_ELSE,
+
   STATE_COMPLETE
 } StateKind;
 
@@ -33,6 +36,7 @@ typedef struct {
       int count;
       Token lbrace;
     } block_stmt;
+    Token else_if_tok;
   } as;
 } State;
 
@@ -171,6 +175,19 @@ static State state_semicolon() {
 static State state_local() {
   return (State) {
     .kind = STATE_LOCAL
+  };
+}
+
+static State state_if() {
+  return (State) {
+    .kind = STATE_IF
+  };
+}
+
+static State state_else(Token if_tok) {
+  return (State) {
+    .kind = STATE_ELSE,
+    .as.else_if_tok = if_tok
   };
 }
 
@@ -325,6 +342,10 @@ static bool handle_state(Parser* p, State state) {
             push_state(p, state_expr());
           }
           break;
+
+        case TOKEN_KEYWORD_IF:
+          push_state(p, state_if());
+          break;
       }
 
       return true;
@@ -354,6 +375,42 @@ static bool handle_state(Parser* p, State state) {
 
       return true;
     }
+
+    case STATE_IF: {
+      Token if_tok = peek(p);
+      REQUIRE(p, TOKEN_KEYWORD_IF, "expected an if statement");
+
+      push_state(p, state_else(if_tok));
+      push_state(p, state_block());
+      push_state(p, state_expr());
+
+      return true;
+    }
+
+    case STATE_ELSE: {
+      if (peek(p).kind == TOKEN_KEYWORD_ELSE) {
+        lex(p);
+
+        push_state(p, state_complete(PARSE_NODE_IF, state.as.else_if_tok, 3));
+
+        switch (peek(p).kind) {
+          default:
+            error_token(p->path, p->source, peek(p), "an else clause must be followed by an if statement or a block");
+            return false;
+          case TOKEN_KEYWORD_IF:
+            push_state(p, state_if());
+            break;
+          case '{':
+            push_state(p, state_block());
+            break;
+        }
+      }
+      else {
+        make_node(p, PARSE_NODE_IF, state.as.else_if_tok, 2);
+      }
+
+      return true;
+    } 
   }
 }
 

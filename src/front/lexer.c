@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <string.h>
 
 #include "front.h"
 
@@ -28,6 +29,29 @@ static Tokens bake_tokens(Arena* arena, Vec(Token)* vec) {
 
 static bool is_ident(int c) {
   return isalnum(c) || c == '_';
+}
+
+static int check_keyword(const char* start, const char* cursor, const char* keyword, int kind) {
+  size_t len = cursor-start;
+
+  if (len == strlen(keyword) && memcmp(start, keyword, len * sizeof(char)) == 0) {
+    return kind;
+  }
+
+  return TOKEN_IDENTIFIER;
+}
+
+static int check_keywords(const char* start, const char* cursor) {
+  switch (start[0]) {
+    default:
+      return TOKEN_IDENTIFIER;
+    case 'i':
+      return check_keyword(start, cursor, "if", TOKEN_KEYWORD_IF);
+    case 'e':
+      return check_keyword(start, cursor, "else", TOKEN_KEYWORD_ELSE);
+    case 'w':
+      return check_keyword(start, cursor, "while", TOKEN_KEYWORD_WHILE);
+  }
 }
 
 Tokens lex_source(Arena* arena, char* source) {
@@ -99,7 +123,7 @@ Tokens lex_source(Arena* arena, char* source) {
         while(is_ident(*cursor)) {
           cursor++;
         }
-        kind = TOKEN_IDENTIFIER;
+        kind = check_keywords(start, cursor);
         break;
     }
 

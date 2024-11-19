@@ -15,3 +15,5 @@ X(TYPENAME, "typename")
 X(LOCAL, "local")
 
 X(SYMBOL, "symbol")
+
+X(IF, "if")
