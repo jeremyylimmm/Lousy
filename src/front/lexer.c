@@ -12,21 +12,6 @@ static Token make_token(int kind, int length, char* start, int line) {
   };
 }
 
-static Tokens bake_tokens(Arena* arena, Vec(Token)* vec) {
-  int count = vec_len(*vec);
-  size_t sz = count * sizeof(Token);
-  
-  Token* data = arena_push(arena, sz);
-
-  memcpy(data, *vec, sz);
-  vec_free(*vec);
-
-  return (Tokens) {
-    .count = count,
-    .data = data
-  };
-}
-
 static bool is_ident(int c) {
   return isalnum(c) || c == '_';
 }
@@ -144,5 +129,8 @@ Tokens lex_source(Arena* arena, char* source) {
     line
   ));
 
-  return bake_tokens(arena, &vec);
+  return (Tokens) {
+    .count = vec_len(vec),
+    .data = vec_bake(arena, vec)
+  };
 }

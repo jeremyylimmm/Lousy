@@ -7,6 +7,8 @@
 
 #define ARRAY_LENGTH(x) (sizeof(x)/sizeof((x)[0]))
 
+#define foreach_list(type, it, head) for (type* it = (head); it; it = it->next)
+
 typedef struct Arena Arena;
 typedef struct ScratchImpl ScratchImpl;
 

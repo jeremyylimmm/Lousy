@@ -22,8 +22,8 @@ typedef struct {
 } Token;
 
 typedef struct {
-  Token* data;
   int count;
+  Token* data;
 } Tokens;
 
 #define X(name, ...) PARSE_NODE_##name,
@@ -58,6 +58,34 @@ typedef struct {
   ParseNode* child;
 } ParseChildIterator;
 
+#define X(name, ...) SEM_OP_##name,
+typedef enum {
+  SEM_OP_UNINITIALIZED,
+  #include "sem_inst.def"
+} SemOp;
+#undef X
+
+typedef uint32_t SemVal;
+
+typedef struct {
+  SemOp op;
+
+  SemVal ins[4];
+  int num_ins;
+
+  SemVal def;
+} SemInst;
+
+typedef struct SemBlock SemBlock;
+struct SemBlock {
+  SemBlock* next;
+  Vec(SemInst) code;
+};
+
+typedef struct {
+  SemBlock* cfg;
+} SemFunc;
+
 Tokens lex_source(Arena* arena, char* source);
 
 ParseTree* parse(Arena* arena, Tokens tokens, const char* path, const char* source);
@@ -71,3 +99,6 @@ void parse_children_next(ParseChildIterator* it);
 #define parse_node_for_each_child(node, it) for (ParseChildIterator it = parse_children_begin(node); parse_children_continue(&it); parse_children_next(&it))
 
 void error_token(const char* path, const char* source, Token token, const char* fmt, ...);
+
+SemFunc* check_tree(Arena* arena, const char* path, const char* source, ParseTree* tree);
+void free_sem_func_storage(SemFunc* func);

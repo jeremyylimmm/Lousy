@@ -21,5 +21,11 @@ int main() {
 
   print_parse_tree(tree);
 
+  SemFunc* func = check_tree(arena, path, source, tree);
+
+  if (!func) {
+    return 1;
+  }
+
   return 0;
 }
