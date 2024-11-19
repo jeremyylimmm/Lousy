@@ -41,7 +41,6 @@ typedef struct {
   Token token;
   int num_children;
   int subtree_size;
-  void* data;
 } ParseNode;
 
 typedef struct {

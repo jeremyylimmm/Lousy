@@ -64,7 +64,7 @@ void parse_children_next(ParseChildIterator* it) {
   it->index--;
 }
 
-static void make_node(Parser* p, ParseNodeKind kind, Token token, int num_children, void* data) {
+static void make_node(Parser* p, ParseNodeKind kind, Token token, int num_children) {
   assert(kind);
 
   ParseNode n = {
@@ -72,7 +72,6 @@ static void make_node(Parser* p, ParseNodeKind kind, Token token, int num_childr
     .token = token,
     .num_children = num_children,
     .subtree_size = 1,
-    .data = data,
   };
 
   int child = vec_len(p->nodes)-1;
@@ -175,18 +174,9 @@ static State state_local() {
   };
 }
 
-static uint64_t parse_integer(Token tok) {
-  uint64_t value = 0;
+static int binary_prec(Token op, bool calling) {
+  int i = calling ? 1 : 0;
 
-  for (int i = 0; i < tok.length; ++i) {
-    value *= 10;
-    value += tok.start[i] - '0';
-  }
-
-  return value;
-}
-
-static int binary_prec(Token op) {
   switch (op.kind) {
     case '*':
     case '/':
@@ -194,6 +184,8 @@ static int binary_prec(Token op) {
     case '+':
     case '-':
       return 10;
+    case '=':
+      return 5 - i;
     default:
       return 0;
   }
@@ -209,6 +201,8 @@ static ParseNodeKind binary_kind(Token op) {
       return PARSE_NODE_ADD;
     case '-':
       return PARSE_NODE_SUB;
+    case '=':
+      return PARSE_NODE_ASSIGN;
     default:
       return PARSE_NODE_UNINITIALIZED;
   }
@@ -244,10 +238,16 @@ static bool handle_state(Parser* p, State state) {
         default:
           error_token(p->path, p->source, peek(p), "expected an expression");
           return false;
+
+        case TOKEN_IDENTIFIER: {
+          Token tok = lex(p);
+          make_node(p, PARSE_NODE_SYMBOL, tok, 0);
+          return true;
+        }
+
         case TOKEN_INTEGER: {
           Token tok = lex(p);
-          uint64_t value = parse_integer(tok);
-          make_node(p, PARSE_NODE_INTEGER, tok, 0, (void*)value);
+          make_node(p, PARSE_NODE_INTEGER, tok, 0);
           return true;
         }
       }
@@ -260,17 +260,17 @@ static bool handle_state(Parser* p, State state) {
     }
 
     case STATE_BINARY_INFIX: {
-      if (binary_prec(peek(p)) > state.as.binary_prec) {
+      if (binary_prec(peek(p), false) > state.as.binary_prec) {
         Token op = lex(p);
         push_state(p, state_binary_infix(state.as.binary_prec));
         push_state(p, state_complete(binary_kind(op), op, 2));
-        push_state(p, state_binary(binary_prec(op)));
+        push_state(p, state_binary(binary_prec(op, true)));
       }
       return true;
     }
 
     case STATE_COMPLETE: {
-      make_node(p, state.as.complete.kind, state.as.complete.token, state.as.complete.num_children, NULL);
+      make_node(p, state.as.complete.kind, state.as.complete.token, state.as.complete.num_children);
       return true;
     }
 
@@ -294,7 +294,7 @@ static bool handle_state(Parser* p, State state) {
     case STATE_BLOCK_STMT: {
       if (peek(p).kind == '}') {
         lex(p);
-        make_node(p, PARSE_NODE_BLOCK, state.as.block_stmt.lbrace, state.as.block_stmt.count, NULL);
+        make_node(p, PARSE_NODE_BLOCK, state.as.block_stmt.lbrace, state.as.block_stmt.count);
         return true;
       }
 
@@ -340,8 +340,8 @@ static bool handle_state(Parser* p, State state) {
       Token type = peek(p);
       REQUIRE(p, TOKEN_IDENTIFIER, "expected a typename");
 
-      make_node(p, PARSE_NODE_IDENTIFIER, name, 0, NULL);
-      make_node(p, PARSE_NODE_TYPENAME, type, 0, NULL);
+      make_node(p, PARSE_NODE_IDENTIFIER, name, 0);
+      make_node(p, PARSE_NODE_TYPENAME, type, 0);
 
       if (peek(p).kind == '=') {
         lex(p);
@@ -349,7 +349,7 @@ static bool handle_state(Parser* p, State state) {
         push_state(p, state_expr());
       }
       else {
-        make_node(p, PARSE_NODE_LOCAL, colon, 2, NULL);
+        make_node(p, PARSE_NODE_LOCAL, colon, 2);
       }
 
       return true;

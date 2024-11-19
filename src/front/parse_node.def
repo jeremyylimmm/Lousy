@@ -6,8 +6,12 @@ X(SUB, "sub")
 X(MUL, "mul")
 X(DIV, "div")
 
+X(ASSIGN, "assign")
+
 X(BLOCK, "block")
 
 X(IDENTIFIER, "ident")
 X(TYPENAME, "typename")
 X(LOCAL, "local")
+
+X(SYMBOL, "symbol")
