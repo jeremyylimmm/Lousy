@@ -15,6 +15,8 @@ typedef enum {
   STATE_BLOCK,
   STATE_BLOCK_STMT,
 
+  STATE_LOCAL,
+
   STATE_COMPLETE
 } StateKind;
 
@@ -92,6 +94,16 @@ static Token peek(Parser* p) {
   return p->tokens.data[p->cur_token];
 }
 
+static Token peekn(Parser* p, int offset) {
+  int index = p->cur_token + offset;
+
+  if (index >= p->tokens.count) {
+    index = p->tokens.count - 1;
+  }
+
+  return p->tokens.data[index];
+}
+
 static Token lex(Parser* p) {
   Token token = peek(p);
 
@@ -154,6 +166,12 @@ static State state_expr() {
 static State state_semicolon() {
   return (State) {
     .kind = STATE_SEMICOLON
+  };
+}
+
+static State state_local() {
+  return (State) {
+    .kind = STATE_LOCAL
   };
 }
 
@@ -296,6 +314,42 @@ static bool handle_state(Parser* p, State state) {
         case '{':
           push_state(p, state_block());
           break;
+
+        case TOKEN_IDENTIFIER:
+          push_state(p, state_semicolon());
+
+          if (peekn(p, 1).kind == ':') {
+            push_state(p, state_local());
+          }
+          else {
+            push_state(p, state_expr());
+          }
+          break;
+      }
+
+      return true;
+    }
+
+    case STATE_LOCAL: {
+      Token name = peek(p);
+      REQUIRE(p, TOKEN_IDENTIFIER, "expected a local declaration");
+
+      Token colon = peek(p);
+      REQUIRE(p, ':', "expected local declaration, consider adding a ':' here");
+
+      Token type = peek(p);
+      REQUIRE(p, TOKEN_IDENTIFIER, "expected a typename");
+
+      make_node(p, PARSE_NODE_IDENTIFIER, name, 0, NULL);
+      make_node(p, PARSE_NODE_TYPENAME, type, 0, NULL);
+
+      if (peek(p).kind == '=') {
+        lex(p);
+        push_state(p, state_complete(PARSE_NODE_LOCAL, colon, 3));
+        push_state(p, state_expr());
+      }
+      else {
+        make_node(p, PARSE_NODE_LOCAL, colon, 2, NULL);
       }
 
       return true;
