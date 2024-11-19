@@ -18,3 +18,5 @@ X(SYMBOL, "symbol")
 
 X(IF, "if")
 X(WHILE, "while")
+
+X(RETURN, "ret")

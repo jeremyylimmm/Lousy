@@ -11,6 +11,7 @@ enum {
   TOKEN_KEYWORD_IF,
   TOKEN_KEYWORD_ELSE,
   TOKEN_KEYWORD_WHILE,
+  TOKEN_KEYWORD_RETURN,
 };
 
 typedef struct {

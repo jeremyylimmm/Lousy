@@ -51,6 +51,8 @@ static int check_keywords(const char* start, const char* cursor) {
       return check_keyword(start, cursor, "else", TOKEN_KEYWORD_ELSE);
     case 'w':
       return check_keyword(start, cursor, "while", TOKEN_KEYWORD_WHILE);
+    case 'r':
+      return check_keyword(start, cursor, "return", TOKEN_KEYWORD_RETURN);
   }
 }
 

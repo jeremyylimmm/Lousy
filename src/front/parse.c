@@ -22,6 +22,8 @@ typedef enum {
 
   STATE_WHILE,
 
+  STATE_RETURN,
+
   STATE_COMPLETE,
 } StateKind;
 
@@ -199,6 +201,12 @@ static State state_while() {
   };
 }
 
+static State state_return() {
+  return (State) {
+    .kind = STATE_RETURN
+  };
+}
+
 static int binary_prec(Token op, bool calling) {
   int i = calling ? 1 : 0;
 
@@ -358,6 +366,11 @@ static bool handle_state(Parser* p, State state) {
         case TOKEN_KEYWORD_WHILE:
           push_state(p, state_while());
           break;
+
+        case TOKEN_KEYWORD_RETURN:
+          push_state(p, state_semicolon());
+          push_state(p, state_return());
+          break;
       }
 
       return true;
@@ -431,6 +444,21 @@ static bool handle_state(Parser* p, State state) {
       push_state(p, state_complete(PARSE_NODE_WHILE, while_tok, 2));
       push_state(p, state_block());
       push_state(p, state_expr());
+
+      return true;
+    }
+
+    case STATE_RETURN: {
+      Token return_tok = peek(p);
+      REQUIRE(p, TOKEN_KEYWORD_RETURN, "expected a return statement");
+
+      if (peek(p).kind != ';') {
+        push_state(p, state_complete(PARSE_NODE_RETURN, return_tok, 1));
+        push_state(p, state_expr());
+      }
+      else {
+        make_node(p, PARSE_NODE_RETURN, return_tok, 0);
+      }
 
       return true;
     }
