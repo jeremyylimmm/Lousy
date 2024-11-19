@@ -20,7 +20,9 @@ typedef enum {
   STATE_IF,
   STATE_ELSE,
 
-  STATE_COMPLETE
+  STATE_WHILE,
+
+  STATE_COMPLETE,
 } StateKind;
 
 typedef struct {
@@ -191,6 +193,12 @@ static State state_else(Token if_tok) {
   };
 }
 
+static State state_while() {
+  return (State) {
+    .kind = STATE_WHILE,
+  };
+}
+
 static int binary_prec(Token op, bool calling) {
   int i = calling ? 1 : 0;
 
@@ -346,6 +354,10 @@ static bool handle_state(Parser* p, State state) {
         case TOKEN_KEYWORD_IF:
           push_state(p, state_if());
           break;
+
+        case TOKEN_KEYWORD_WHILE:
+          push_state(p, state_while());
+          break;
       }
 
       return true;
@@ -411,6 +423,17 @@ static bool handle_state(Parser* p, State state) {
 
       return true;
     } 
+
+    case STATE_WHILE: {
+      Token while_tok = peek(p);
+      REQUIRE(p, TOKEN_KEYWORD_WHILE, "expected a while loop");
+
+      push_state(p, state_complete(PARSE_NODE_WHILE, while_tok, 2));
+      push_state(p, state_block());
+      push_state(p, state_expr());
+
+      return true;
+    }
   }
 }
 
