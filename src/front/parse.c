@@ -559,6 +559,8 @@ void print_parse_tree(ParseTree* tree) {
     printf("%s: '%.*s'\n", parse_node_label[item.node->kind], item.node->token.length, item.node->token.start);
   }
 
+  printf("\n");
+
   vec_free(stack);
   scratch_release(&scratch);
 }
