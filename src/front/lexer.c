@@ -48,12 +48,24 @@ Tokens lex_source(Arena* arena, char* source) {
   char* cursor = source;
 
   while (1) {
-    while (isspace(*cursor)) {
-      if (*cursor == '\n') {
-        line++;
+
+    while (1) {
+      while (isspace(*cursor)) {
+        if (*cursor == '\n') {
+          line++;
+        }
+
+        *cursor++;
       }
 
-      *cursor++;
+      if (cursor[0] == '/' && cursor[1] == '/') {
+        while (*cursor != '\n' && *cursor != '\0') {
+          ++cursor;
+        }
+      }
+      else {
+        break;
+      }
     }
 
     if (*cursor == '\0') {

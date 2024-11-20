@@ -36,6 +36,11 @@ inline void* ptr_byte_add(void* ptr, int64_t offset) {
   return (uint8_t*)ptr + offset;
 }
 
+typedef struct {
+  char* s;
+  size_t len;
+} Str;
+
 char* load_text_file(Arena* arena, const char* path);
 
 #define Vec(T) T*

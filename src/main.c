@@ -27,5 +27,7 @@ int main() {
     return 1;
   }
 
+  print_sem_func(func);
+
   return 0;
 }

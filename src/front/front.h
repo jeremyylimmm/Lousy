@@ -36,7 +36,7 @@ typedef enum {
 
 #define X(name, label, ...) label,
 static const char* parse_node_label[NUM_PARSE_NODE_KINDS] = {
-  "!uninitialized!",
+  "!!uninitialized!!",
   #include "parse_node.def"
 };
 #undef X
@@ -61,29 +61,46 @@ typedef struct {
 #define X(name, ...) SEM_OP_##name,
 typedef enum {
   SEM_OP_UNINITIALIZED,
-  #include "sem_inst.def"
+  #include "sem_op.def"
+  NUM_SEM_OPS
 } SemOp;
 #undef X
 
-typedef uint32_t SemVal;
+#define X(name, label, ...) label,
+static const char* sem_op_label[] = {
+  "!!uninitialized!!",
+  #include "sem_op.def"
+};
+#undef X
+
+typedef uint32_t SemPlace;
+#define SEM_NULL_PLACE 0xffffffff
+
+typedef struct {
+  int dummy;
+} SemPlaceData;
 
 typedef struct {
   SemOp op;
 
-  SemVal ins[4];
-  int num_ins;
+  SemPlace reads[4];
+  int num_reads;
 
-  SemVal def;
+  SemPlace write;
+
+  void* data;
 } SemInst;
 
 typedef struct SemBlock SemBlock;
 struct SemBlock {
   SemBlock* next;
   Vec(SemInst) code;
+  int _id;
 };
 
 typedef struct {
   SemBlock* cfg;
+  Vec(SemPlaceData) place_data;
 } SemFunc;
 
 Tokens lex_source(Arena* arena, char* source);
@@ -102,3 +119,5 @@ void error_token(const char* path, const char* source, Token token, const char* 
 
 SemFunc* check_tree(Arena* arena, const char* path, const char* source, ParseTree* tree);
 void free_sem_func_storage(SemFunc* func);
+
+void print_sem_func(SemFunc* func);
