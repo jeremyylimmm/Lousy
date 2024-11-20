@@ -56,6 +56,7 @@ void* _vec_bake(Arena* arena, void* vec, size_t stride);
 #define vec_put(v, x) ( *(void**)(&(v)) = _vec_put(v, sizeof((v)[0])), (v)[vec_len(v)-1] = (x), (void)0 )
 #define vec_pop(v) ((v)[_vec_pop(v)])
 #define vec_bake(arena, v) (*(void**)(&(v)) = _vec_bake(arena, v, sizeof((v)[0])), v)
+#define vec_back(v) (assert(vec_len(v)), &(v)[vec_len(v)-1] )
 
 static size_t bitset_num_u64(size_t num_bits) {
   return (num_bits+63)/64;

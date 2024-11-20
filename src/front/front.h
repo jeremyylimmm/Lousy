@@ -83,6 +83,8 @@ typedef struct {
 typedef struct {
   SemOp op;
 
+  Token token;
+
   SemPlace reads[4];
   int num_reads;
 
@@ -93,6 +95,7 @@ typedef struct {
 
 typedef struct SemBlock SemBlock;
 struct SemBlock {
+  bool contains_usercode;
   SemBlock* next;
   Vec(SemInst) code;
   int _id;
@@ -121,3 +124,5 @@ SemFunc* check_tree(Arena* arena, const char* path, const char* source, ParseTre
 void free_sem_func_storage(SemFunc* func);
 
 void print_sem_func(SemFunc* func);
+
+bool sem_analyze_func(const char* path, const char* source, SemFunc* func);

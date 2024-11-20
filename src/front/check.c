@@ -134,11 +134,22 @@ static SemPlace new_place(Checker* c) {
   return place;
 }
 
-static void make_inst_base(Checker* c, SemBlock* block, SemPlace write, SemOp op, int num_reads, void* data) {
+static bool is_user_inst(SemOp op) {
+  switch (op) {
+    default:
+      return true;
+    case SEM_OP_GOTO:
+    case SEM_OP_BRANCH:
+      return false;
+  }
+}
+
+static void make_inst_base(Checker* c, SemBlock* block, SemPlace write, SemOp op, Token token, int num_reads, void* data) {
   assert(op);
   
   SemInst inst = {
     .op = op,
+    .token = token,
     .num_reads = num_reads,
     .write = write,
     .data = data
@@ -149,16 +160,17 @@ static void make_inst_base(Checker* c, SemBlock* block, SemPlace write, SemOp op
   }
 
   vec_put(block->code, inst);
+  block->contains_usercode |= is_user_inst(op);
 }
 
-static void make_inst(Checker* c, bool writes, SemOp op, int num_reads, void* data) {
+static void make_inst(Checker* c, bool writes, SemOp op, Token token, int num_reads, void* data) {
   SemPlace write = SEM_NULL_PLACE;
 
   if (writes) {
     write = new_place(c);
   }
 
-  make_inst_base(c, c->current_block, write, op, num_reads, data);
+  make_inst_base(c, c->current_block, write, op, token, num_reads, data);
 
   push_place(c, write);
 }
@@ -182,7 +194,7 @@ static bool check_INTEGER(Checker* c, CheckItem x) {
     value += x.node->token.start[i] - '0';
   }
 
-  make_inst(c, true, SEM_OP_INTEGER_CONST, 0, (void*)value);
+  make_inst(c, true, SEM_OP_INTEGER_CONST, x.node->token, 0, (void*)value);
 
   return true;
 }
@@ -202,7 +214,7 @@ static bool check_binary(Checker* c, CheckItem x, SemOp op) {
       return true;
 
     case 1:
-      make_inst(c, true, op, 2, NULL);
+      make_inst(c, true, op, x.node->token, 2, NULL);
       return true;
   }
 }
@@ -260,7 +272,7 @@ static bool check_ASSIGN(Checker* c, CheckItem x) {
       SemPlace value = pop_place(c);
       SemPlace dest = pop_place(c);
       push_place(c, value);
-      make_inst_base(c, c->current_block, dest, SEM_OP_COPY, 1, NULL);
+      make_inst_base(c, c->current_block, dest, SEM_OP_COPY, x.node->token, 1, NULL);
       push_place(c, value);
       return true;
   }
@@ -342,16 +354,16 @@ static bool check_SYMBOL(Checker* c, CheckItem x) {
   return true;
 }
 
-static void make_goto(Checker* c, SemBlock* from, SemBlock* to) {
-  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_GOTO, 0, to);
+static void make_goto(Checker* c, Token token, SemBlock* from, SemBlock* to) {
+  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_GOTO, token, 0, to);
 }
 
-static void make_branch(Checker* c, SemBlock* from, SemBlock* then_loc, SemBlock* else_loc) {
+static void make_branch(Checker* c, Token token, SemBlock* from, SemBlock* then_loc, SemBlock* else_loc) {
   SemBlock** locs = arena_array(c->arena, SemBlock*, 2);
   locs[0] = then_loc;
   locs[1] = else_loc;
 
-  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_BRANCH, 1, locs);
+  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_BRANCH, token, 1, locs);
 }
 
 static bool check_IF(Checker* c, CheckItem x) {
@@ -379,11 +391,11 @@ static bool check_IF(Checker* c, CheckItem x) {
     case 2: {
       SemBlock* else_head = new_block(c, &x.as.if_stmt.then_tail);
 
-      make_branch(c, x.as.if_stmt.entry_tail, x.as.if_stmt.then_head, else_head);
+      make_branch(c, x.node->token, x.as.if_stmt.entry_tail, x.as.if_stmt.then_head, else_head);
 
       if (x.node->num_children == 2) {
         // No else
-        make_goto(c, x.as.if_stmt.then_tail, else_head);
+        make_goto(c, x.node->token, x.as.if_stmt.then_tail, else_head);
       }
       else {
         // Has else
@@ -398,8 +410,8 @@ static bool check_IF(Checker* c, CheckItem x) {
       SemBlock* else_tail;
       SemBlock* end = new_block(c, &else_tail);
 
-      make_goto(c, x.as.if_stmt.then_tail, end);
-      make_goto(c, else_tail, end);
+      make_goto(c, x.node->token, x.as.if_stmt.then_tail, end);
+      make_goto(c, x.node->token, else_tail, end);
 
       return true;
     }
@@ -419,7 +431,7 @@ static bool check_WHILE(Checker* c, CheckItem x) {
       SemBlock* before;
       x.as.while_loop.entry_head = new_block(c, &before);
 
-      make_goto(c, before, x.as.while_loop.entry_head);
+      make_goto(c, x.node->token, before, x.as.while_loop.entry_head);
 
       next_stage(c, x);
       push(c, item(children[0])); // push cond
@@ -440,8 +452,8 @@ static bool check_WHILE(Checker* c, CheckItem x) {
       SemBlock* body_tail;
       SemBlock* end_head = new_block(c, &body_tail);
 
-      make_branch(c, x.as.while_loop.entry_tail, x.as.while_loop.body_head, end_head);
-      make_goto(c, body_tail, x.as.while_loop.entry_head);
+      make_branch(c, x.node->token, x.as.while_loop.entry_tail, x.as.while_loop.body_head, end_head);
+      make_goto(c, x.node->token, body_tail, x.as.while_loop.entry_head);
 
       return true;
     }
@@ -456,7 +468,7 @@ static bool check_RETURN(Checker* c, CheckItem x) {
     
     case 0:
       if (x.node->num_children == 0) {
-        make_inst(c, false, SEM_OP_RETURN, 0, NULL);
+        make_inst(c, false, SEM_OP_RETURN, x.node->token, 0, NULL);
         new_block(c, NULL);
       }
       else {
@@ -470,7 +482,7 @@ static bool check_RETURN(Checker* c, CheckItem x) {
       return true;
 
     case 1:
-      make_inst(c, false, SEM_OP_RETURN, 1, NULL);
+      make_inst(c, false, SEM_OP_RETURN, x.node->token, 1, NULL);
       new_block(c, NULL);
       return true;
   }

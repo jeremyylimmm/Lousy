@@ -27,6 +27,10 @@ int main() {
     return 1;
   }
 
+  if(!sem_analyze_func(path, source, func)) {
+    return 1;
+  }
+
   print_sem_func(func);
 
   return 0;
