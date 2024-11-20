@@ -28,6 +28,11 @@ typedef struct {
     struct {
       int initial_stack_state;
     } block;
+    struct {
+      SemBlock* entry_head;
+      SemBlock* entry_tail;
+      SemBlock* body_head;
+    } while_loop;
   } as;
 } CheckItem;
 
@@ -81,7 +86,11 @@ static CheckItem item(ParseNode* node) {
   };
 }
 
-static SemBlock* new_block(Checker* c) {
+static SemBlock* new_block(Checker* c, SemBlock** out_cur) {
+  if (out_cur) {
+    *out_cur = c->current_block;
+  }
+
   SemBlock* block = arena_type(c->arena, SemBlock);
 
   if (c->current_block) {
@@ -143,13 +152,17 @@ static void make_inst(Checker* c, bool writes, SemOp op, int num_reads, void* da
 
   if (writes) {
     write = new_place(c);
-    push_place(c, write);
   }
 
   make_inst_base(c, c->current_block, write, op, num_reads, data);
+
+  push_place(c, write);
 }
 
-static void get_children(ParseNode* node, ParseNode** children) {
+static void get_children(ParseNode* node, ParseNode** children, int capacity) {
+  (void)capacity;
+  assert(node->num_children <= capacity);
+
   parse_node_for_each_child(node, it) {
     children[it.index] = it.child;
   }
@@ -293,7 +306,7 @@ static bool check_TYPENAME(Checker* c, CheckItem x) {
 static bool check_LOCAL(Checker* c, CheckItem x) {
   if (x.node->num_children == 2) {
     ParseNode* children[2];
-    get_children(x.node, children);
+    get_children(x.node, children, ARRAY_LENGTH(children));
 
     Token name = children[0]->token;
 
@@ -330,7 +343,49 @@ static bool check_IF(Checker* c, CheckItem x) {
 }
 
 static bool check_WHILE(Checker* c, CheckItem x) {
-  UNHANDLED();
+  ParseNode* children[2];
+  get_children(x.node, children, ARRAY_LENGTH(children));
+
+  switch (x.stage) {
+    default:
+      assert(false);
+      return false;
+
+    case 0: {
+      SemBlock* before;
+      x.as.while_loop.entry_head = new_block(c, &before);
+
+      make_inst_base(c, before, SEM_NULL_PLACE, SEM_OP_GOTO, 0, x.as.while_loop.entry_head);
+
+      next_stage(c, x);
+      push(c, item(children[0])); // push cond
+
+      return true;
+    }
+
+    case 1: {
+      x.as.while_loop.body_head = new_block(c, &x.as.while_loop.entry_tail);
+
+      next_stage(c, x);
+      push(c, item(children[1])); // push body
+
+      return true;
+    }
+
+    case 2: {
+      SemBlock* body_tail;
+      SemBlock* end_head = new_block(c, &body_tail);
+
+      SemBlock** locs = arena_array(c->arena, SemBlock*, 2);
+      locs[0] = x.as.while_loop.body_head;
+      locs[1] = end_head;
+
+      make_inst_base(c, x.as.while_loop.entry_tail, SEM_NULL_PLACE, SEM_OP_BRANCH, 1, locs);
+      make_inst_base(c, body_tail, SEM_NULL_PLACE, SEM_OP_GOTO, 0, x.as.while_loop.entry_head);
+
+      return true;
+    }
+  }
 }
 
 static bool check_RETURN(Checker* c, CheckItem x) {
@@ -342,7 +397,7 @@ static bool check_RETURN(Checker* c, CheckItem x) {
     case 0:
       if (x.node->num_children == 0) {
         make_inst(c, false, SEM_OP_RETURN, 0, NULL);
-        new_block(c);
+        new_block(c, NULL);
       }
       else {
         assert(x.node->num_children == 1);
@@ -356,7 +411,7 @@ static bool check_RETURN(Checker* c, CheckItem x) {
 
     case 1:
       make_inst(c, false, SEM_OP_RETURN, 1, NULL);
-      new_block(c);
+      new_block(c, NULL);
       return true;
   }
 }
@@ -371,7 +426,7 @@ SemFunc* check_tree(Arena* arena, const char* path, const char* source, ParseTre
     .source = source,
   };
 
-  SemBlock* root = new_block(&c);
+  SemBlock* root = new_block(&c, NULL);
 
   push(&c, item(&tree->nodes[tree->num_nodes-1]));
 
@@ -449,6 +504,16 @@ void print_sem_func(SemFunc* func) {
         case SEM_OP_INTEGER_CONST:
           printf("%lld", (uint64_t)inst->data);
           break;
+
+        case SEM_OP_GOTO: {
+          SemBlock* loc = inst->data;
+          printf("bb_%d", loc->_id);
+        } break;
+
+        case SEM_OP_BRANCH: {
+          SemBlock** locs = inst->data;
+          printf(" [bb_%d, bb_%d]", locs[0]->_id, locs[1]->_id);
+        } break;
       }
 
       printf("\n");

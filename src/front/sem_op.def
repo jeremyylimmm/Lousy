@@ -8,3 +8,6 @@ X(DIV, "div")
 X(COPY, "copy")
 
 X(RETURN, "return")
+
+X(GOTO, "goto")
+X(BRANCH, "branch")
