@@ -33,6 +33,12 @@ typedef struct {
       SemBlock* entry_tail;
       SemBlock* body_head;
     } while_loop;
+    struct {
+      SemBlock* entry_tail;
+      SemBlock* then_head;
+      SemBlock* then_tail;
+      SemBlock* else_head;
+    } if_stmt;
   } as;
 } CheckItem;
 
@@ -338,8 +344,68 @@ static bool check_SYMBOL(Checker* c, CheckItem x) {
   return true;
 }
 
+static void make_goto(Checker* c, SemBlock* from, SemBlock* to) {
+  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_GOTO, 0, to);
+}
+
+static void make_branch(Checker* c, SemBlock* from, SemBlock* then_loc, SemBlock* else_loc) {
+  SemBlock** locs = arena_array(c->arena, SemBlock*, 2);
+  locs[0] = then_loc;
+  locs[1] = else_loc;
+
+  make_inst_base(c, from, SEM_NULL_PLACE, SEM_OP_BRANCH, 1, locs);
+}
+
 static bool check_IF(Checker* c, CheckItem x) {
-  UNHANDLED();
+  ParseNode* children[3];
+  get_children(x.node, children, ARRAY_LENGTH(children));
+
+  switch (x.stage) {
+    default:
+      assert(false);
+      return true;
+
+    case 0: {
+      next_stage(c, x);
+      push(c, item(children[0])); // push cond
+      return true;
+    }
+
+    case 1: {
+      x.as.if_stmt.then_head = new_block(c, &x.as.if_stmt.entry_tail);
+      next_stage(c, x);
+      push(c, item(children[1])); // push then
+      return true;
+    }
+
+    case 2: {
+      SemBlock* else_head = new_block(c, &x.as.if_stmt.then_tail);
+
+      make_branch(c, x.as.if_stmt.entry_tail, x.as.if_stmt.then_head, else_head);
+
+      if (x.node->num_children == 2) {
+        // No else
+        make_goto(c, x.as.if_stmt.then_tail, else_head);
+      }
+      else {
+        // Has else
+        next_stage(c, x);
+        push(c, item(children[2]));
+      }
+
+      return true;
+    }
+
+    case 3: {
+      SemBlock* else_tail;
+      SemBlock* end = new_block(c, &else_tail);
+
+      make_goto(c, x.as.if_stmt.then_tail, end);
+      make_goto(c, else_tail, end);
+
+      return true;
+    }
+  }  
 }
 
 static bool check_WHILE(Checker* c, CheckItem x) {
@@ -355,7 +421,7 @@ static bool check_WHILE(Checker* c, CheckItem x) {
       SemBlock* before;
       x.as.while_loop.entry_head = new_block(c, &before);
 
-      make_inst_base(c, before, SEM_NULL_PLACE, SEM_OP_GOTO, 0, x.as.while_loop.entry_head);
+      make_goto(c, before, x.as.while_loop.entry_head);
 
       next_stage(c, x);
       push(c, item(children[0])); // push cond
@@ -376,12 +442,8 @@ static bool check_WHILE(Checker* c, CheckItem x) {
       SemBlock* body_tail;
       SemBlock* end_head = new_block(c, &body_tail);
 
-      SemBlock** locs = arena_array(c->arena, SemBlock*, 2);
-      locs[0] = x.as.while_loop.body_head;
-      locs[1] = end_head;
-
-      make_inst_base(c, x.as.while_loop.entry_tail, SEM_NULL_PLACE, SEM_OP_BRANCH, 1, locs);
-      make_inst_base(c, body_tail, SEM_NULL_PLACE, SEM_OP_GOTO, 0, x.as.while_loop.entry_head);
+      make_branch(c, x.as.while_loop.entry_tail, x.as.while_loop.body_head, end_head);
+      make_goto(c, body_tail, x.as.while_loop.entry_head);
 
       return true;
     }
