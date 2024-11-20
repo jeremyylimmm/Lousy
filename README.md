@@ -1,3 +1,4 @@
-# CC
-### Toy Language and an Optimizing Compiler Backend
-In-progress, does NOT work yet!
+# Toy Language
+## Language Frontend and Optimizing Compiler Backend
+
+This shit is so bad!!
