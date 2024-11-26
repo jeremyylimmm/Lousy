@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "utility.h"
 
+#include "spindle/spindle.h"
+
 enum {
   TOKEN_EOF = 0,
 
@@ -127,3 +129,14 @@ void free_sem_func_storage(SemFunc* func);
 void print_sem_func(FILE* stream, SemFunc* func);
 
 bool sem_analyze_func(const char* path, const char* source, SemFunc* func);
+
+typedef struct {
+  int count;
+  SemBlock* data[2];
+} SemSuccessors;
+
+SemSuccessors sem_compute_successors(SemBlock* block);
+
+int sem_assign_temp_ids(SemFunc* func);
+
+SB_Func* lower_sem_func(SB_Context* sb, SemFunc* func);

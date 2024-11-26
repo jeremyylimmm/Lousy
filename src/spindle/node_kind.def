@@ -13,6 +13,13 @@ X(BRANCH, "branch")
 X(BRANCH_TRUE, "true")
 X(BRANCH_FALSE, "false")
 
+X(STORE, "store")
+X(LOAD, "load")
+
+X(MEM_ESCAPE, "escape")
+
+X(ALLOCA, "alloca")
+
 X(CONSTANT, "constant")
 
 X(ADD, "add")

@@ -54,6 +54,10 @@ void free_arena(Arena* arena) {
 }
 
 void* arena_push(Arena* arena, size_t amount) {
+  if (amount == 0) {
+    return NULL;
+  }
+
   size_t offset = (arena->allocated + 7) & (~7);
 
   while (arena->capacity - offset < amount) {

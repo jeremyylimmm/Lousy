@@ -2,6 +2,7 @@
 
 #include "spindle.h"
 #include "utility.h"
+#include "internal.h"
 
 #define DATA(node, ty) ((ty*)(node_data_raw(node)))
 
@@ -12,6 +13,10 @@ struct SB_Context {
 typedef struct {
   uint64_t value;
 } ConstantData;
+
+static void* node_data_raw(SB_Node* node) {
+  return ptr_byte_add(node, sizeof(SB_Node));
+}
 
 SB_Context* sb_init() {
   Arena* arena = new_arena();
@@ -35,12 +40,6 @@ SB_Func* sb_begin_func(SB_Context* ctx) {
 }
 
 typedef struct {
-  size_t count;
-  SB_Node** nodes;
-  uint64_t* visited;
-} GraphWalk;
-
-typedef struct {
   bool children_processed;
   SB_Node* node;
 } PostOrderNode;
@@ -52,7 +51,7 @@ static PostOrderNode post_order_node(bool children_processed, SB_Node* node) {
   };
 }
 
-static GraphWalk post_order_walk(Arena* arena, SB_Func* func) {
+GraphWalk post_order_walk_ins(Arena* arena, SB_Func* func) {
   size_t count = 0;
   SB_Node** nodes = arena_array(arena, SB_Node*, func->next_id);
 
@@ -99,7 +98,7 @@ void sb_finish_func(SB_Func* func) {
   assert(func->start);
   assert(func->end);
 
-  GraphWalk walk = post_order_walk(scratch.arena, func);
+  GraphWalk walk = post_order_walk_ins(scratch.arena, func);
 
   assert(bitset_get(walk.visited, func->start->id) && "function never terminates");
 
@@ -119,10 +118,22 @@ void sb_finish_func(SB_Func* func) {
   scratch_release(&scratch);
 }
 
+static const char* gv_label(SB_Node* node, char* buf, size_t buf_cap) {
+  switch (node->kind) {
+    default:
+      return sb_node_kind_label[node->kind];
+    case SB_NODE_CONSTANT: {
+      uint64_t value = DATA(node, ConstantData)->value;
+      snprintf(buf, buf_cap, "%lld", value);
+      return buf;
+    } break;
+  }
+}
+
 void sb_graphviz_func(FILE* stream, SB_Func* func) {
   Scratch scratch = scratch_get(0, NULL);
 
-  GraphWalk walk = post_order_walk(scratch.arena, func);
+  GraphWalk walk = post_order_walk_ins(scratch.arena, func);
 
   fprintf(stream, "digraph G {\n");
   fprintf(stream, "  rankdir=BT;\n");
@@ -146,17 +157,21 @@ void sb_graphviz_func(FILE* stream, SB_Func* func) {
 
     fprintf(stream, "    n%d [", node->id);
 
+    char buf[512];
+    const char* label = gv_label(node, buf, ARRAY_LENGTH(buf));
+
     if (!has_proj) {
       if (node->flags & SB_FLAG_IS_CFG) {
         fprintf(stream, "style=filled,fillcolor=yellow,");
       }
-      fprintf(stream, "label=\"%s\"", sb_node_kind_label[node->kind]);
+
+      fprintf(stream, "label=\"%s\"", label);
     }
     else {
       fprintf(stream, "shape=plaintext, label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
 
       fprintf(stream, "<tr><td%s>", (node->flags & SB_FLAG_IS_CFG) ? " bgcolor=\"yellow\"" : "");
-      fprintf(stream, "%s</td></tr>",sb_node_kind_label[node->kind]);
+      fprintf(stream, "%s</td></tr>", label);
 
       fprintf(stream, "<tr><td>");
       fprintf(stream, "<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
@@ -209,12 +224,9 @@ void sb_graphviz_func(FILE* stream, SB_Func* func) {
   scratch_release(&scratch);
 }
 
-static void* node_data_raw(SB_Node* node) {
-  return ptr_byte_add(node, sizeof(SB_Node));
-}
-
 static void init_ins(SB_Func* func, SB_Node* node, int32_t num_ins) {
   assert(node->ins == NULL);
+  node->num_ins = num_ins;
   node->ins = arena_array(func->context->arena, SB_Node*, num_ins);
 }
 
@@ -226,7 +238,6 @@ static SB_Node* new_node_with_data(SB_Func* func, SB_NodeKind kind, int32_t num_
 
   node->id = func->next_id++;
   node->kind = kind;
-  node->num_ins = num_ins;
   init_ins(func, node, num_ins);
 
   return node;
@@ -303,7 +314,7 @@ SB_Node* sb_node_end(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* return
 }
 
 SB_Node* sb_node_null(SB_Func* func) {
-  return new_node(func, SB_NODE_NULL, 0);
+  return new_leaf(func, SB_NODE_NULL, 0);
 }
 
 SB_Node* sb_node_region(SB_Func* func) {
@@ -313,6 +324,7 @@ SB_Node* sb_node_region(SB_Func* func) {
 }
 
 void sb_set_region_ins(SB_Func* func, SB_Node* region, int32_t num_ins, SB_Node** ins) {
+  assert(num_ins);
   assert(region->kind == SB_NODE_REGION);
 
   init_ins(func, region, num_ins);
@@ -328,7 +340,7 @@ SB_Node* sb_node_phi(SB_Func* func) {
 
 void sb_set_phi_ins(SB_Func* func, SB_Node* phi, SB_Node* region, int32_t num_ins, SB_Node** ins) {
   assert(phi->kind == SB_NODE_PHI);
-  assert(region->kind == SB_NODE_PHI);
+  assert(region->kind == SB_NODE_REGION);
   assert(num_ins == region->num_ins);
 
   init_ins(func, phi, num_ins + 1);
@@ -362,6 +374,36 @@ SB_Node* sb_node_branch_false(SB_Func* func, SB_Node* branch) {
   SB_Node* node = new_proj(func, SB_NODE_BRANCH_FALSE, branch);
   node->flags |= SB_FLAG_IS_CFG;
   return node;
+}
+
+SB_Node* sb_node_store(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* address, SB_Node* value) {
+  SB_Node* node = new_node(func, SB_NODE_STORE, 4);
+  set_input(func, node, 0, ctrl);
+  set_input(func, node, 1, mem);
+  set_input(func, node, 2, address);
+  set_input(func, node, 3, value);
+  node->flags |= SB_FLAG_HAS_MEM_DEP;
+  return node;
+}
+
+SB_Node* sb_node_load(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* address) {
+  SB_Node* node = new_node(func, SB_NODE_LOAD, 3);
+  set_input(func, node, 0, ctrl);
+  set_input(func, node, 1, mem);
+  set_input(func, node, 2, address);
+  node->flags |= SB_FLAG_READS_MEM | SB_FLAG_HAS_MEM_DEP;
+  return node;
+}
+
+SB_Node* sb_node_mem_escape(SB_Func* func, SB_Node* mem) {
+  SB_Node* node = new_node(func, SB_NODE_MEM_ESCAPE, 2);
+  set_input(func, node, 1, mem);
+  node->flags |= SB_FLAG_READS_MEM | SB_FLAG_HAS_MEM_DEP;
+  return node;
+}
+
+SB_Node* sb_node_alloca(SB_Func* func) {
+  return new_leaf(func, SB_NODE_ALLOCA, 0);
 }
 
 SB_Node* sb_node_constant(SB_Func* func, uint64_t value) {

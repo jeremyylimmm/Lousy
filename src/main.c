@@ -12,6 +12,11 @@ int main() {
   const char* path = "test/test.txt";
   char* source = load_text_file(arena, path);
 
+  if (!source) {
+    fprintf(stderr, "Failed to load '%s'\n", path);
+    return 1;
+  }
+
   Tokens tokens = lex_source(arena, source);
 
   ParseTree* tree = parse(arena, tokens, path, source);
@@ -34,19 +39,10 @@ int main() {
 
   print_sem_func(stdout, func);
 
-  SB_Context* sb_context = sb_init();
-  SB_Func* sb_func = sb_begin_func(sb_context);
+  SB_Context* sb= sb_init();
+  SB_Func* sb_func = lower_sem_func(sb, func);
 
-  SB_Node* start = sb_node_start(sb_func);
-  SB_Node* start_ctrl = sb_node_start_ctrl(sb_func, start);
-  SB_Node* start_mem = sb_node_start_mem(sb_func, start);
-
-  SB_Node* constant = sb_node_constant(sb_func, 69);
-
-  sb_node_end(sb_func, start_ctrl, start_mem, constant);
-
-  sb_finish_func(sb_func);
-
+  sb_opt(sb, sb_func);
   sb_graphviz_func(stdout, sb_func);
 
   return 0;

@@ -10,7 +10,7 @@ void free_sem_func_storage(SemFunc* func) {
   vec_free(func->place_data);
 }
 
-static int assign_temp_ids(SemFunc* func) {
+int sem_assign_temp_ids(SemFunc* func) {
   int next_block_id = 0;
 
   foreach_list(SemBlock, b, func->cfg) {
@@ -21,7 +21,7 @@ static int assign_temp_ids(SemFunc* func) {
 }
 
 void print_sem_func(FILE* stream, SemFunc* func) {
-  assign_temp_ids(func);
+  sem_assign_temp_ids(func);
 
   foreach_list(SemBlock, b, func->cfg) {
     fprintf(stream, "bb_%d:\n", b->_id);
@@ -71,13 +71,8 @@ void print_sem_func(FILE* stream, SemFunc* func) {
   fprintf(stream, "\n");
 }
 
-typedef struct {
-  int count;
-  SemBlock* data[2];
-} Successors;
-
-static Successors compute_successors(SemBlock* block) {
-  Successors result = {0};
+SemSuccessors sem_compute_successors(SemBlock* block) {
+  SemSuccessors result = {0};
 
   if (vec_len(block->code)) {
     SemInst* inst = vec_back(block->code);
@@ -103,7 +98,7 @@ bool sem_analyze_func(const char* path, const char* source, SemFunc* func) {
 
   bool success = true;
 
-  int num_blocks = assign_temp_ids(func);
+  int num_blocks = sem_assign_temp_ids(func);
 
   uint64_t* reachable = arena_array(scratch.arena, uint64_t, bitset_num_u64(num_blocks));
 
@@ -119,7 +114,7 @@ bool sem_analyze_func(const char* path, const char* source, SemFunc* func) {
 
     bitset_set(reachable, block->_id);
 
-    Successors succ = compute_successors(block);
+    SemSuccessors succ = sem_compute_successors(block);
 
     for (int i = 0; i < succ.count; ++i) {
       vec_put(stack, succ.data[i]);

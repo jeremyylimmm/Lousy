@@ -70,3 +70,9 @@ void* _vec_bake(Arena* arena, void* vec, size_t stride) {
 
   return data;
 }
+
+void vec_clear(void* vec) {
+  if (vec) {
+    hdr(vec)->length = 0;
+  }
+}

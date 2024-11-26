@@ -7,6 +7,7 @@
 typedef enum {
   SB_NODE_UNINITIALIZED,
   #include "node_kind.def" 
+  NUM_SB_NODE_KINDS
 } SB_NodeKind;
 #undef X
 
@@ -23,9 +24,11 @@ typedef struct SB_Node SB_Node;
 #define SB_BIT(x) (1 << x)
 
 typedef enum {
-  SB_FLAG_ONE = 0,
+  SB_FLAG_NONE = 0,
   SB_FLAG_IS_PROJ = SB_BIT(0),
-  SB_FLAG_IS_CFG = SB_BIT(1)
+  SB_FLAG_IS_CFG = SB_BIT(1),
+  SB_FLAG_READS_MEM = SB_BIT(2),
+  SB_FLAG_HAS_MEM_DEP = SB_BIT(3),
 } SB_Flags;
 
 struct SB_Use {
@@ -83,9 +86,18 @@ SB_Node* sb_node_branch(SB_Func* func, SB_Node* ctrl, SB_Node* predicate);
 SB_Node* sb_node_branch_true(SB_Func* func, SB_Node* branch);
 SB_Node* sb_node_branch_false(SB_Func* func, SB_Node* branch);
 
+SB_Node* sb_node_store(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* address, SB_Node* value);
+SB_Node* sb_node_load(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* address);
+
+SB_Node* sb_node_mem_escape(SB_Func* func, SB_Node* mem);
+
+SB_Node* sb_node_alloca(SB_Func* func);
+
 SB_Node* sb_node_constant(SB_Func* func, uint64_t value);
 
 SB_Node* sb_node_add(SB_Func* func, SB_Node* lhs, SB_Node* rhs);
 SB_Node* sb_node_sub(SB_Func* func, SB_Node* lhs, SB_Node* rhs);
 SB_Node* sb_node_mul(SB_Func* func, SB_Node* lhs, SB_Node* rhs);
 SB_Node* sb_node_sdiv(SB_Func* func, SB_Node* lhs, SB_Node* rhs);
+
+void sb_opt(SB_Context* ctx, SB_Func* func);
