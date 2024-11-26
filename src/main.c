@@ -20,7 +20,7 @@ int main() {
     return 1;
   }
 
-  print_parse_tree(tree);
+  print_parse_tree(stdout, tree);
 
   SemFunc* func = check_tree(arena, path, source, tree);
 
@@ -32,7 +32,7 @@ int main() {
     return 1;
   }
 
-  print_sem_func(func);
+  print_sem_func(stdout, func);
 
   SB_Context* sb_context = sb_init();
   SB_Func* sb_func = sb_begin_func(sb_context);

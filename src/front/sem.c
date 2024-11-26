@@ -20,55 +20,55 @@ static int assign_temp_ids(SemFunc* func) {
   return next_block_id;
 }
 
-void print_sem_func(SemFunc* func) {
+void print_sem_func(FILE* stream, SemFunc* func) {
   assign_temp_ids(func);
 
   foreach_list(SemBlock, b, func->cfg) {
-    printf("bb_%d:\n", b->_id);
+    fprintf(stream, "bb_%d:\n", b->_id);
 
     for(int inst_idx = 0; inst_idx < vec_len(b->code); ++inst_idx) {
-      printf("  ");
+      fprintf(stream, "  ");
 
       SemInst* inst = &b->code[inst_idx];
 
       if (inst->write != SEM_NULL_PLACE) {
-        printf("_%-3d = ", inst->write);
+        fprintf(stream, "_%-3d = ", inst->write);
       }
       else {
-        printf("%7s", "");
+        fprintf(stream, "%7s", "");
       }
 
-      printf("%s ", sem_op_label[inst->op]);
+      fprintf(stream, "%s ", sem_op_label[inst->op]);
 
       for (int i = 0; i < inst->num_reads; ++i) {
         if (i > 0) {
-          printf(", ");
+          fprintf(stream, ", ");
         }
 
-        printf("_%d", inst->reads[i]);
+        fprintf(stream, "_%d", inst->reads[i]);
       }
 
       switch (inst->op) {
         case SEM_OP_INTEGER_CONST:
-          printf("%lld", (uint64_t)inst->data);
+          fprintf(stream, "%lld", (uint64_t)inst->data);
           break;
 
         case SEM_OP_GOTO: {
           SemBlock* loc = inst->data;
-          printf("bb_%d", loc->_id);
+          fprintf(stream, "bb_%d", loc->_id);
         } break;
 
         case SEM_OP_BRANCH: {
           SemBlock** locs = inst->data;
-          printf(" [bb_%d, bb_%d]", locs[0]->_id, locs[1]->_id);
+          fprintf(stream, " [bb_%d, bb_%d]", locs[0]->_id, locs[1]->_id);
         } break;
       }
 
-      printf("\n");
+      fprintf(stream, "\n");
     }
   }
 
-  printf("\n");
+  fprintf(stream, "\n");
 }
 
 typedef struct {

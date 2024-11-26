@@ -513,7 +513,7 @@ static PrintItem make_print_item(Arena* arena, ParseNode* node, int depth, uint6
   };
 }
 
-void print_parse_tree(ParseTree* tree) {
+void print_parse_tree(FILE* stream, ParseTree* tree) {
   Scratch scratch = scratch_get(0, NULL);
 
   Vec(PrintItem) stack = NULL;
@@ -547,19 +547,19 @@ void print_parse_tree(ParseTree* tree) {
       bool first_child = bitset_get(item.first_child, d);
 
       if (d == item.depth) {
-        printf("%c", first_child ? 218 : 195);
-        printf("%c", 196);
+        fprintf(stream, "%c", first_child ? 218 : 195);
+        fprintf(stream, "%c", 196);
       }
       else {
-        printf("%c", first_child ? ' ' :  179);
-        printf(" ");
+        fprintf(stream, "%c", first_child ? ' ' :  179);
+        fprintf(stream, " ");
       }
     }
 
-    printf("%s: '%.*s'\n", parse_node_label[item.node->kind], item.node->token.length, item.node->token.start);
+    fprintf(stream, "%s: '%.*s'\n", parse_node_label[item.node->kind], item.node->token.length, item.node->token.start);
   }
 
-  printf("\n");
+  fprintf(stream, "\n");
 
   vec_free(stack);
   scratch_release(&scratch);

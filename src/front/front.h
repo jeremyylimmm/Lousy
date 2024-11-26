@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdio.h>
 #include "utility.h"
 
 enum {
@@ -110,7 +111,7 @@ Tokens lex_source(Arena* arena, char* source);
 
 ParseTree* parse(Arena* arena, Tokens tokens, const char* path, const char* source);
 
-void print_parse_tree(ParseTree* tree);
+void print_parse_tree(FILE* stream, ParseTree* tree);
 
 ParseChildIterator parse_children_begin(ParseNode* node);
 bool parse_children_continue(ParseChildIterator* it);
@@ -123,6 +124,6 @@ void error_token(const char* path, const char* source, Token token, const char* 
 SemFunc* check_tree(Arena* arena, const char* path, const char* source, ParseTree* tree);
 void free_sem_func_storage(SemFunc* func);
 
-void print_sem_func(SemFunc* func);
+void print_sem_func(FILE* stream, SemFunc* func);
 
 bool sem_analyze_func(const char* path, const char* source, SemFunc* func);
