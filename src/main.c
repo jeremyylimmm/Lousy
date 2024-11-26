@@ -2,6 +2,7 @@
 
 #include "utility.h"
 #include "front/front.h"
+#include "spindle/spindle.h"
 
 int main() {
   init_thread();
@@ -32,6 +33,21 @@ int main() {
   }
 
   print_sem_func(func);
+
+  SB_Context* sb_context = sb_init();
+  SB_Func* sb_func = sb_begin_func(sb_context);
+
+  SB_Node* start = sb_node_start(sb_func);
+  SB_Node* start_ctrl = sb_node_start_ctrl(sb_func, start);
+  SB_Node* start_mem = sb_node_start_mem(sb_func, start);
+
+  SB_Node* constant = sb_node_constant(sb_func, 69);
+
+  sb_node_end(sb_func, start_ctrl, start_mem, constant);
+
+  sb_finish_func(sb_func);
+
+  sb_graphviz_func(stdout, sb_func);
 
   return 0;
 }
