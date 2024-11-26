@@ -125,21 +125,85 @@ void sb_graphviz_func(FILE* stream, SB_Func* func) {
   GraphWalk walk = post_order_walk(scratch.arena, func);
 
   fprintf(stream, "digraph G {\n");
+  fprintf(stream, "  rankdir=BT;\n");
+
+  fprintf(stream, "  subgraph cluster {\n");
 
   for (size_t i = 0; i < walk.count; ++i) {
     SB_Node* node = walk.nodes[i];
 
-    fprintf(stream, "  n%d [", node->id);
-    fprintf(stream, "label=\"%s\"", sb_node_kind_label[node->kind]);
+    if (node->flags & SB_FLAG_IS_PROJ) {
+      continue;
+    }
+
+    bool has_proj = false;
+
+    for (SB_Use* use = node->uses; !has_proj && use; use = use->next) {
+      if (use->node->flags & SB_FLAG_IS_PROJ) {
+        has_proj = true;
+      }
+    }
+
+    fprintf(stream, "    n%d [", node->id);
+
+    if (!has_proj) {
+      if (node->flags & SB_FLAG_IS_CFG) {
+        fprintf(stream, "style=filled,fillcolor=yellow,");
+      }
+      fprintf(stream, "label=\"%s\"", sb_node_kind_label[node->kind]);
+    }
+    else {
+      fprintf(stream, "shape=plaintext, label=<<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
+
+      fprintf(stream, "<tr><td%s>", (node->flags & SB_FLAG_IS_CFG) ? " bgcolor=\"yellow\"" : "");
+      fprintf(stream, "%s</td></tr>",sb_node_kind_label[node->kind]);
+
+      fprintf(stream, "<tr><td>");
+      fprintf(stream, "<table border=\"0\" cellborder=\"1\" cellspacing=\"0\" cellpadding=\"4\">");
+      fprintf(stream, "<tr>");
+
+      for (SB_Use* use = node->uses; use; use = use->next) {
+        if (!(use->node->flags & SB_FLAG_IS_PROJ)) {
+          continue;
+        }
+
+        fprintf(stream, "<td%s", (use->node->flags & SB_FLAG_IS_CFG) ? " bgcolor=\"yellow\"" : "");
+
+        fprintf(stream, " port=\"p%s\">%s</td>", sb_node_kind_label[use->node->kind], sb_node_kind_label[use->node->kind]);
+      }
+
+      fprintf(stream, "</tr>");
+      fprintf(stream, "</table>");
+      fprintf(stream, "</td></tr>");
+
+      fprintf(stream, "</table>>");
+    }
+
     fprintf(stream, "];\n"); 
 
     for (int32_t j = 0; j < node->num_ins; ++j) {
-      if (node->ins[j]) {
-        fprintf(stream, "  n%d -> n%d;\n", node->id, node->ins[j]->id);
+      if (!node->ins[j]) {
+        continue;
       }
+
+      if (node->ins[j]->kind == SB_NODE_START && !(node->flags & SB_FLAG_IS_PROJ)) {
+        continue;
+      }
+
+      fprintf(stream, "    n%d -> ", node->id);
+
+      if (node->ins[j]->flags & SB_FLAG_IS_PROJ) {
+        fprintf(stream, "n%d:p%s", node->ins[j]->ins[0]->id, sb_node_kind_label[node->ins[j]->kind]);
+      }
+      else {
+        fprintf(stream, "n%d", node->ins[j]->id);
+      }
+
+      fprintf(stream, "[taillabel=\"%d\"];\n", j);
     }
   }
 
+  fprintf(stream, "  }\n");
   fprintf(stream, "}\n\n");
 
   scratch_release(&scratch);
@@ -156,6 +220,7 @@ static void init_ins(SB_Func* func, SB_Node* node, int32_t num_ins) {
 
 static SB_Node* new_node_with_data(SB_Func* func, SB_NodeKind kind, int32_t num_ins, size_t data_size) {
   assert(kind);
+  assert(kind == SB_NODE_START || kind == SB_NODE_PHI || kind == SB_NODE_REGION || num_ins != 0);
 
   SB_Node* node = arena_zeroed(func->context->arena, sizeof(SB_Node) + data_size);
 
@@ -170,6 +235,7 @@ static SB_Node* new_node_with_data(SB_Func* func, SB_NodeKind kind, int32_t num_
 static SB_Node* new_node(SB_Func* func, SB_NodeKind kind, int32_t num_ins)  {
   return new_node_with_data(func, kind, num_ins, 0);
 }
+
 
 static void set_input(SB_Func* func, SB_Node* node, int32_t index, SB_Node* input) {
   assert(input);
@@ -187,25 +253,38 @@ static void set_input(SB_Func* func, SB_Node* node, int32_t index, SB_Node* inpu
   input->uses = use;
 }
 
+static SB_Node* new_leaf(SB_Func* func, SB_NodeKind kind, size_t data_size) {
+  assert(func->start);
+  SB_Node* node = new_node_with_data(func, kind, 1, data_size);
+  set_input(func, node, 0, func->start);
+  return node;
+}
+
 static SB_Node* new_proj(SB_Func* func, SB_NodeKind kind, SB_Node* parent) {
   SB_Node* node = new_node(func, kind, 1);
+  node->flags |= SB_FLAG_IS_PROJ;
   set_input(func, node, 0, parent);
   return node;
 }
 
 SB_Node* sb_node_start(SB_Func* func) {
   assert(!func->start);
-  return func->start = new_node(func, SB_NODE_START, 0);
+  func->start = new_node(func, SB_NODE_START, 0);
+  func->start->flags |= SB_FLAG_IS_CFG;
+  return func->start;
 }
 
 SB_Node* sb_node_start_ctrl(SB_Func* func, SB_Node* start) {
   assert(start->kind == SB_NODE_START);
-  return new_proj(func, SB_NODE_START_CTRL, start);
+  SB_Node* node = new_proj(func, SB_NODE_START_CTRL, start);
+  node->flags |= SB_FLAG_IS_CFG;
+  return node;
 }
 
 SB_Node* sb_node_start_mem(SB_Func* func, SB_Node* start) {
   assert(start->kind == SB_NODE_START);
-  return new_proj(func, SB_NODE_START_MEM, start);
+  SB_Node* node = new_proj(func, SB_NODE_START_MEM, start);
+  return node;
 }
 
 SB_Node* sb_node_end(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* return_value) {
@@ -215,6 +294,8 @@ SB_Node* sb_node_end(SB_Func* func, SB_Node* ctrl, SB_Node* mem, SB_Node* return
   set_input(func, node, 0, ctrl);
   set_input(func, node, 1, mem);
   set_input(func, node, 2, return_value);
+
+  node->flags |= SB_FLAG_IS_CFG;
 
   func->end = node;
 
@@ -226,7 +307,9 @@ SB_Node* sb_node_null(SB_Func* func) {
 }
 
 SB_Node* sb_node_region(SB_Func* func) {
-  return new_node(func, SB_NODE_REGION, 0);
+  SB_Node* node = new_node(func, SB_NODE_REGION, 0);
+  node->flags |= SB_FLAG_IS_CFG;
+  return node;
 }
 
 void sb_set_region_ins(SB_Func* func, SB_Node* region, int32_t num_ins, SB_Node** ins) {
@@ -258,23 +341,31 @@ void sb_set_phi_ins(SB_Func* func, SB_Node* phi, SB_Node* region, int32_t num_in
 
 SB_Node* sb_node_branch(SB_Func* func, SB_Node* ctrl, SB_Node* predicate) {
   SB_Node* branch = new_node(func, SB_NODE_BRANCH, 2);
+
   set_input(func, branch, 0, ctrl);
   set_input(func, branch, 1, predicate);
+
+  branch->flags = SB_FLAG_IS_CFG;
+
   return branch;
 }
 
 SB_Node* sb_node_branch_true(SB_Func* func, SB_Node* branch) {
   assert(branch->kind == SB_NODE_BRANCH);
-  return new_proj(func, SB_NODE_BRANCH_TRUE, branch);
+  SB_Node* node = new_proj(func, SB_NODE_BRANCH_TRUE, branch);
+  node->flags |= SB_FLAG_IS_CFG;
+  return node;
 }
 
 SB_Node* sb_node_branch_false(SB_Func* func, SB_Node* branch) {
   assert(branch->kind == SB_NODE_BRANCH);
-  return new_proj(func, SB_NODE_BRANCH_FALSE, branch);
+  SB_Node* node = new_proj(func, SB_NODE_BRANCH_FALSE, branch);
+  node->flags |= SB_FLAG_IS_CFG;
+  return node;
 }
 
 SB_Node* sb_node_constant(SB_Func* func, uint64_t value) {
-  SB_Node* node = new_node_with_data(func, SB_NODE_CONSTANT, 0, sizeof(ConstantData));
+  SB_Node* node = new_leaf(func, SB_NODE_CONSTANT, sizeof(ConstantData));
   DATA(node, ConstantData)->value = value;
   return node;
 }

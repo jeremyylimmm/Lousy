@@ -20,6 +20,14 @@ static char* sb_node_kind_label[] = {
 typedef struct SB_Use  SB_Use;
 typedef struct SB_Node SB_Node;
 
+#define SB_BIT(x) (1 << x)
+
+typedef enum {
+  SB_FLAG_ONE = 0,
+  SB_FLAG_IS_PROJ = SB_BIT(0),
+  SB_FLAG_IS_CFG = SB_BIT(1)
+} SB_Flags;
+
 struct SB_Use {
   SB_Use* next;
 
@@ -29,6 +37,7 @@ struct SB_Use {
 
 struct SB_Node {
   int32_t id;
+  SB_Flags flags;
 
   SB_NodeKind kind;
 
